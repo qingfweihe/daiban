@@ -286,8 +286,8 @@ const AI_BASES = {
 };
 
 const AI_PRESETS = [
-  { label: "用内置的（推荐）", value: "builtin|gemini-3-flash", hint: "不用填密钥，已经配好了" },
-  { label: "内置 · 更快一档", value: "builtin|gemini-3.1-flash-lite", hint: "简单句子够用，响应更快" },
+  { label: "用内置的（推荐）", value: "builtin|gemini-3.8-flash", hint: "不用填密钥，已经配好了" },
+  { label: "内置 · 更稳一档", value: "builtin|gemini-4-argon-medium", hint: "绕的说法也不容易听错，稍慢一点" },
   { label: "阿里百炼 · qwen-plus", value: "dashscope|qwen-plus", hint: "要用你自己的密钥" },
   { label: "DeepSeek · deepseek-chat", value: "deepseek|deepseek-chat", hint: "要用你自己的密钥" },
   { label: "月之暗面 · moonshot-v1-8k", value: "moonshot|moonshot-v1-8k", hint: "要用你自己的密钥" },

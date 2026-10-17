@@ -70,7 +70,7 @@ export function meHTML() {
     '<div class="row" data-act="test-ai"><div class="row-main"><div class="row-title">测一下通不通</div>' +
     '<div class="row-sub">已内置，不用配置。点一下拿句绕的话试试</div></div><span class="row-arrow">' + SVG.spark + "</span></div>" +
     '<div class="row" data-act="set-aimodel"><div class="row-main"><div class="row-title">换成别的模型</div>' +
-    '<div class="row-sub">默认' + esc(p.aiKey ? "用自己的密钥" : "用内置的") + " · " + esc(p.aiModel || "gemini-3-flash") + '</div></div>' +
+    '<div class="row-sub">默认' + esc(p.aiKey ? "用自己的密钥" : "用内置的") + " · " + esc(p.aiModel || "gemini-3.8-flash") + '</div></div>' +
     '<span class="row-arrow">' + SVG.chev + "</span></div>" +
 
     '<div class="sec-title">提醒</div>' +

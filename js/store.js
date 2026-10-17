@@ -19,14 +19,14 @@ const DEFAULT = {
   ],
   items: [],
   prefs: {
-    prefsV: 4,                                          // 配置版本，用于给老数据补默认值
+    prefsV: 5,                                          // 配置版本，用于给老数据补默认值
     aiOn: true,
     aiUrl: "https://qinfweihe1-d5gxpjjli9f8f238b-1497157745.ap-shanghai.app.tcloudbase.com/todo",
     // 密钥留空 = 用云函数内置的那条通道，开箱即用，不用他配。
     // 填了才会覆盖成自己的（也只存本机）。
     aiKey: "",
     aiBase: "https://api.seventoken.shop/v1",
-    aiModel: "gemini-3-flash",
+    aiModel: "gemini-3.8-flash",
     defaultListId: "l_inbox",
     remindAhead: 0,       // 提前多少分钟提醒（0 = 到点提醒）
     remindOn: true,
@@ -92,6 +92,16 @@ function load() {
         d.prefs.aiModel = DEFAULT.prefs.aiModel;
       }
       d.prefs.prefsV = 4;
+    }
+    if (!(d.prefs.prefsV >= 5)) {
+      // v4 → v5：供应商把模型名换了（gemini-3-flash 一夜之间下架）。
+      // 还在用内置通道、且模型名已经作废的，换成现在还在的；自己配过的不动。
+      const dead = ["gemini-3-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview"];
+      const builtinBase = /api\.seventoken\.shop/.test(String(d.prefs.aiBase || ""));
+      if (!d.prefs.aiKey && builtinBase && dead.indexOf(d.prefs.aiModel) >= 0) {
+        d.prefs.aiModel = DEFAULT.prefs.aiModel;
+      }
+      d.prefs.prefsV = 5;
     }
     if (!Array.isArray(d.items)) d.items = [];
     if (!Array.isArray(d.lists) || !d.lists.length) d.lists = clone(DEFAULT.lists);
