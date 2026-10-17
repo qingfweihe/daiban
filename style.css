@@ -277,6 +277,22 @@ svg {
 .group-head.overdue { color: var(--red); }
 .group-head.overdue .line { background: #F6E2E0; }
 
+/* 长列表的"还有 N 条"——一行字，不加卡片、不加阴影 */
+.fold-more {
+  display: block;
+  width: 100%;
+  padding: 14px 2px;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: 13.5px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.fold-more:active { color: var(--ink-2); }
+
 .sec-title {
   font-size: 11.5px;
   font-weight: 600;
@@ -579,6 +595,8 @@ details.done-fold summary::-webkit-details-marker { display: none; }
   word-break: break-all;
 }
 .row-val { font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+/* 备份码这类"要照着抄"的字符：等宽 + 稍淡，不抢眼但看得清 */
+.row-val.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.4px; }
 .row-arrow { color: var(--ink-4); }
 .row-arrow svg { width: 15px; height: 15px; }
 

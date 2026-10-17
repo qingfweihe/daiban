@@ -41,6 +41,12 @@ const DEFAULT = {
     pushId: "",           // 这台设备的随机号，云端靠它区分"谁的手机"
     pushUrl: "",          // 留空就用 push.js 里的默认地址
     pushSyncedAt: 0,      // 上次把清单交给云端的时间
+    // —— 云端备份（手机被清空 / 换手机时靠它找回来）——
+    backupKey: "",        // 备份码（钥匙）：第一次备份时自动生成，界面里能看到
+    backupUrl: "",        // 留空就用 cloud-backup.js 里的默认地址
+    backupAt: 0,          // 上次备份成功的时间
+    backupItems: 0,       // 上次备份了多少条
+    backupImages: 0,      // 上次备份了多少张图
   },
 };
 
@@ -463,6 +469,38 @@ export async function dropBlob(id) {
   });
 }
 
+/** 列出本机所有附件 id（打包备份用） */
+export async function listBlobIds() {
+  const d = await db();
+  return new Promise((res, rej) => {
+    const tx = d.transaction("blobs", "readonly");
+    const rq = tx.objectStore("blobs").getAllKeys();
+    rq.onsuccess = () => res(rq.result || []);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+
+function blobToDataURL(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result));
+    fr.onerror = () => rej(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
+function dataURLToBlob(u) {
+  const s = String(u);
+  const cut = s.indexOf(",");
+  const head = cut > 0 ? s.slice(0, cut) : "";
+  const b64 = cut > 0 ? s.slice(cut + 1) : s;
+  const mime = (head.match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
 /** 压缩图片：最长边 900，JPEG q0.72 */
 export function compressImage(file, maxSide = 900, quality = 0.72) {
   return new Promise((resolve, reject) => {
@@ -490,15 +528,115 @@ export function compressImage(file, maxSide = 900, quality = 0.72) {
 
 /* ---------- 导入 / 导出 ---------- */
 
-export function exportJSON() {
-  return JSON.stringify(state, null, 2);
+/**
+ * 备份里不该带的东西：属于"这台设备"的推送订阅、密钥、备份码。
+ * 换台手机恢复时，这些必须用新手机自己的 —— 否则会出现"显示开着却收不到"。
+ */
+const DEVICE_ONLY_PREFS = [
+  "pushOn", "pushId", "pushUrl", "pushSyncedAt", "aiKey",
+  "backupKey", "backupUrl", "backupAt", "backupItems", "backupImages",
+];
+
+function prefsForBackup(p) {
+  const out = Object.assign({}, p);
+  for (const k of DEVICE_ONLY_PREFS) delete out[k];
+  return out;
 }
 
+export function exportJSON() {
+  return JSON.stringify({ app: "daiban", v: 2, items: state.items, lists: state.lists, prefs: prefsForBackup(state.prefs) }, null, 2);
+}
+
+/**
+ * 把当前数据连同图片收集成一个对象（不改动任何东西）。
+ * 图片从 IndexedDB 读出来转成 base64 —— 这样"存成文件"和"传到云端"能共用一份。
+ * 返回 { items, lists, prefs, images: {id: dataURL}, bytes }
+ */
+export async function collectBackup() {
+  const images = {};
+  let bytes = 0;
+  try {
+    const ids = await listBlobIds();
+    for (const id of ids) {
+      const b = await getBlob(id);
+      if (!b) continue;
+      images[id] = await blobToDataURL(b);
+      bytes += b.size || 0;
+    }
+  } catch (e) {
+    console.warn("图片没读出来，只备份了文字", e);
+  }
+  return {
+    items: state.items,
+    lists: state.lists,
+    prefs: prefsForBackup(state.prefs),
+    images,
+    bytes,
+  };
+}
+
+/**
+ * 打包备份：文字 + 图片一起走。
+ * 图片在 IndexedDB 里，转成 base64 塞进同一个文件 —— 换手机时一个文件就够。
+ * 返回 { json, bytes, images }
+ */
+export async function exportBackup() {
+  const p = await collectBackup();
+  const payload = {
+    app: "daiban",
+    v: 2,
+    exportedAt: new Date().toISOString(),
+    items: p.items,
+    lists: p.lists,
+    prefs: p.prefs,
+    images: p.images,
+  };
+  return { json: JSON.stringify(payload), bytes: p.bytes, images: Object.keys(p.images).length };
+}
+
+/**
+ * 恢复备份：先还原图片，再还原文字。
+ * 本机的推送订阅/密钥不跟着备份走 —— 否则新手机"显示开着提醒"却收不到。
+ * 返回 { items, images }
+ */
+export async function importBackup(text) {
+  const d = JSON.parse(text);
+  if (!d || !Array.isArray(d.items)) throw new Error("文件格式不对");
+
+  let imgs = 0;
+  if (d.images && typeof d.images === "object") {
+    for (const id of Object.keys(d.images)) {
+      try {
+        await putBlob(id, dataURLToBlob(d.images[id]));
+        imgs++;
+      } catch (e) {
+        console.warn("有张图片没恢复成功", id, e);
+      }
+    }
+  }
+
+  const keep = {};
+  for (const k of DEVICE_ONLY_PREFS) keep[k] = state.prefs[k];
+
+  if (!Array.isArray(d.lists) || !d.lists.length) d.lists = clone(DEFAULT.lists);
+  d.prefs = Object.assign({}, DEFAULT.prefs, d.prefs || {});
+  Object.assign(d.prefs, keep);      // 这台设备的推送/密钥保持不动
+  d.items.forEach(normalize);
+  state = d;
+  notify({ type: "import" });
+  return { items: d.items.length, images: imgs };
+}
+
+/** 老格式（只有文字，没有图片）也能恢复 */
 export function importJSON(text) {
   const d = JSON.parse(text);
   if (!d || !Array.isArray(d.items)) throw new Error("文件格式不对");
+  const keep = {};
+  for (const k of DEVICE_ONLY_PREFS) keep[k] = state.prefs[k];
+
   if (!Array.isArray(d.lists) || !d.lists.length) d.lists = clone(DEFAULT.lists);
   d.prefs = Object.assign({}, DEFAULT.prefs, d.prefs || {});
+  Object.assign(d.prefs, keep);
   d.items.forEach(normalize);
   state = d;
   notify({ type: "import" });

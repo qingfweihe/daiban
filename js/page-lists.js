@@ -3,7 +3,7 @@
    ============================================================ */
 
 import { lists, pendingOf, allTags, getState } from "./store.js";
-import { taskWithSubsHTML, emptyHTML } from "./render.js";
+import { taskWithSubsHTML, emptyHTML, foldList, foldMoreHTML } from "./render.js";
 import { SVG } from "./ui.js";
 import { esc, todayYmd } from "./util.js";
 
@@ -75,7 +75,11 @@ export function listDetailHTML() {
     );
   }
 
-  let html = todo.map((it) => taskWithSubsHTML(it)).join("");
+  const foldKey = isTag ? "tag|" + listState.tag : "list|" + listState.openId;
+  const shownTodo = foldList(foldKey, todo);
+  let html =
+    shownTodo.map((it) => taskWithSubsHTML(it)).join("") +
+    foldMoreHTML(foldKey, todo.length, shownTodo.length);
   if (done.length) {
     html +=
       '<div class="sec-title">已完成 ' + done.length + "</div>" +

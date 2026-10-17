@@ -6,6 +6,7 @@ import { stats, prefs, getState, allTags } from "./store.js";
 import { SVG } from "./ui.js";
 import { esc } from "./util.js";
 import { describe as pushDescribe } from "./push.js";
+import { describe as backupDescribe } from "./cloud-backup.js";
 
 function sw(on) {
   return '<span class="switch ' + (on ? "on" : "") + '"><i></i></span>';
@@ -93,12 +94,20 @@ export function meHTML() {
       : "") +
 
     '<div class="sec-title">数据</div>' +
+    '<div class="row" data-act="cloud-save"><div class="row-main"><div class="row-title">备份到云端</div>' +
+    '<div class="row-sub">' + esc(backupDescribe()) + '</div></div><span class="row-arrow">' + SVG.out + "</span></div>" +
+    '<div class="row" data-act="cloud-load"><div class="row-main"><div class="row-title">从云端恢复</div>' +
+    '<div class="row-sub">换手机、或者手机被清空时用它取回来（会覆盖现在的内容）</div></div><span class="row-arrow">' + SVG.in + "</span></div>" +
+    '<div class="row" data-act="backup-key"><div class="row-main"><div class="row-title">备份码</div>' +
+    '<div class="row-sub">' +
+    esc(p.backupKey ? "这就是钥匙 —— 换手机时填它才能找回，建议截图存一份" : "第一次备份时自动生成，之后一直用它") +
+    '</div></div><span class="row-val mono">' + esc(p.backupKey || "——") + "</span></div>" +
     '<div class="row" data-act="export-ics"><div class="row-main"><div class="row-title">导出到手机日历</div>' +
     '<div class="row-sub">用系统闹钟提醒 —— 这条最不会掉链子</div></div><span class="row-arrow">' + SVG.out + "</span></div>" +
-    '<div class="row" data-act="export-json"><div class="row-main"><div class="row-title">备份数据</div>' +
-    '<div class="row-sub">存成文件，换手机时能恢复</div></div><span class="row-arrow">' + SVG.out + "</span></div>" +
-    '<div class="row" data-act="import-json"><div class="row-main"><div class="row-title">恢复数据</div>' +
-    '<div class="row-sub">从备份读回来（会覆盖现在的）</div></div><span class="row-arrow">' + SVG.in + "</span></div>" +
+    '<div class="row" data-act="export-json"><div class="row-main"><div class="row-title">存成文件</div>' +
+    '<div class="row-sub">连图片一起打包成一个文件，放自己兜里</div></div><span class="row-arrow">' + SVG.out + "</span></div>" +
+    '<div class="row" data-act="import-json"><div class="row-main"><div class="row-title">从文件恢复</div>' +
+    '<div class="row-sub">读回之前存的文件（会覆盖现在的任务和图片）</div></div><span class="row-arrow">' + SVG.in + "</span></div>" +
     '<div class="row" data-act="clear-done"><div class="row-main"><div class="row-title">清掉已完成的</div>' +
     '<div class="row-sub">把打完勾的一次性收走</div></div><span class="row-arrow">' + SVG.chev + "</span></div>" +
 

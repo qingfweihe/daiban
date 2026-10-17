@@ -4,18 +4,19 @@
 
 import {
   init, subscribe, addItem, updateItem, removeItem, toggleItem, getItem,
-  prefs, setPref, stats, exportJSON, importJSON, clearDone, wipe,
+  prefs, setPref, stats, exportJSON, importJSON, exportBackup, importBackup, clearDone, wipe,
   lists, addList, removeList, allItems, searchItems, todayBuckets, byDate,
 } from "./store.js";
 import { parseNatural, fmtDate, esc, download, buildICS, todayYmd, diffDays, uid, repeatLabel } from "./util.js";
 import { toast, openSheet, closeSheet, confirmBox, promptBox, pickBox, undoToast, SVG } from "./ui.js";
-import { taskHTML } from "./render.js";
+import { taskHTML, foldState } from "./render.js";
 import { todayHTML, chipsHTML, quickState, todaySub } from "./page-today.js";
 import { listsHTML, listDetailHTML, listState, listTitle, listSub } from "./page-lists.js";
 import { calHTML, calState, initCal, calSub } from "./page-calendar.js";
 import { meHTML, meSub } from "./page-me.js";
 import { openItemSheet } from "./sheet-item.js";
 import * as push from "./push.js";
+import * as cloud from "./cloud-backup.js";
 
 const view = document.getElementById("view");
 const titleEl = document.getElementById("pageTitle");
@@ -96,6 +97,9 @@ function bindQuick() {
     if (box) box.innerHTML = chipsHTML(p);
   };
   inp.onkeydown = (e) => {
+    // 拼音/五笔打字时按回车是"选词"，不是"提交"。
+    // 不判这一下，打一半就会被记成任务（keyCode 229 是部分安卓输入法的特征值）。
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter") {
       e.preventDefault();
       submitQuick();
@@ -327,6 +331,13 @@ view.addEventListener("click", async (e) => {
     case "qk-submit":
       submitQuick();
       break;
+    case "fold-open":
+      // 长列表："还有 N 条"点开，只影响这一组
+      if (el.dataset.fold) {
+        foldState.add(el.dataset.fold);
+        render();
+      }
+      break;
     case "open-list":
       listState.openId = el.dataset.list;
       listState.tag = null;
@@ -408,11 +419,19 @@ view.addEventListener("click", async (e) => {
       doExportICS();
       break;
     case "export-json":
-      download("待办备份-" + todayYmd() + ".json", exportJSON(), "application/json");
-      toast("备份文件已保存");
+      doExportBackup();
       break;
     case "import-json":
       doImportJSON();
+      break;
+    case "cloud-save":
+      await doCloudSave();
+      break;
+    case "cloud-load":
+      await doCloudLoad();
+      break;
+    case "backup-key":
+      await doBackupKey();
       break;
     case "clear-done":
       await doClearDone();
@@ -699,6 +718,24 @@ function doExportICS() {
   });
 }
 
+/** 打包备份：文字 + 图片，一个文件带走 */
+async function doExportBackup() {
+  toast("正在打包…", 4000);
+  try {
+    const r = await exportBackup();
+    const kb = Math.round(r.json.length / 1024);
+    download("待办备份-" + todayYmd() + ".json", r.json, "application/json");
+    toast(
+      r.images
+        ? "已保存 · " + r.images + " 张图，" + (kb > 1024 ? (kb / 1024).toFixed(1) + " MB" : kb + " KB")
+        : "已保存 · 没有图片附件",
+      3200
+    );
+  } catch (e) {
+    toast("打包失败：" + (e.message || e));
+  }
+}
+
 function doImportJSON() {
   const inp = document.createElement("input");
   inp.type = "file";
@@ -710,14 +747,110 @@ function doImportJSON() {
     if (!ok) return;
     try {
       const txt = await f.text();
-      const n = importJSON(txt);
+      const r = await importBackup(txt);
       render({ toTop: true });
-      toast("恢复成功，共 " + n + " 条");
+      toast("恢复成功 · " + r.items + " 条" + (r.images ? "、" + r.images + " 张图" : ""), 3200);
     } catch (e) {
       toast("读不了这个文件：" + e.message);
     }
   };
   inp.click();
+}
+
+/* ---------- 云端备份 ---------- */
+
+async function doCloudSave() {
+  toast("正在打包…", 6000);
+  try {
+    const r = await cloud.save(({ done, total, phase }) => {
+      if (phase === "img" && total) toast("正在传图片 " + Math.min(done + 1, total) + "/" + total, 5000);
+      else if (phase === "text") toast("正在写备份…", 5000);
+    });
+    render();
+    const tail = r.failed ? "（" + r.failed + " 张没传上去）" : "";
+    toast("已备份到云端 · " + r.items + " 条" + (r.images ? "、" + r.images + " 张图" : "") + tail, 3600);
+  } catch (e) {
+    toast("备份没成功：" + (e.message || e), 3600);
+  }
+}
+
+async function doCloudLoad() {
+  let key = "";
+  try {
+    key = cloud.backupKey();
+  } catch (e) { /* 没生成过就先留空 */ }
+
+  // 先问云端有没有 —— 本机没备份过、或者这是台新手机，都得让他填旧码
+  try {
+    const info = await cloud.info(key);
+    if (!info.exists) {
+      const typed = await promptBox("云端还没有这台设备的备份", "", "填之前那台的备份码", {
+        hint: "旧手机「我的 → 备份码」里那串字符。两个手机都用同一个码，就能拿到同一份备份。",
+        okText: "用这个码找",
+      });
+      if (!typed) return;
+      if (!cloud.validKey(typed)) { toast("备份码格式不对（6~48 位字母数字）"); return; }
+      key = typed.trim();
+      const again = await cloud.info(key);
+      if (!again.exists) { toast("云端没找到这个码的备份"); return; }
+    }
+  } catch (e) {
+    toast("连不上云端：" + (e.message || e), 3600);
+    return;
+  }
+
+  const sure = await confirmBox("会用云端的备份覆盖现在手机上的任务和图片，确定吗？", "确定恢复", true);
+  if (!sure) return;
+
+  try {
+    const r = await cloud.load(key, ({ done, total }) => {
+      if (total) toast("正在取回图片 " + Math.min(done + 1, total) + "/" + total, 5000);
+    });
+    render({ toTop: true });
+    const tail = r.failed ? "（" + r.failed + " 张图没取回）" : "";
+    toast("已恢复 · " + r.items + " 条" + (r.images ? "、" + r.images + " 张图" : "") + tail, 3600);
+  } catch (e) {
+    toast("恢复失败：" + (e.message || e), 3600);
+  }
+}
+
+async function doBackupKey() {
+  const cur = prefs().backupKey || cloud.backupKey();
+  const v = await promptBox("备份码（钥匙）", cur, "6~48 位字母数字", {
+    hint: "云端按这个码存你那份备份。换手机、或者手机被清空时，填一样的码就能取回来 —— 建议截图存一份。想改成自己好记的也行，改完记得也记一下。",
+    okText: "保存并复制",
+  });
+  if (v === null) return;
+  const s = String(v).trim();
+  if (!cloud.validKey(s)) { toast("格式不对：6~48 位，只能用字母、数字、下划线、短横"); return; }
+  cloud.setBackupKey(s);
+  render();
+  const copied = await copyText(s);
+  toast(copied ? "备份码已复制 · " + s : "备份码： " + s, 4000);
+}
+
+/** 复制到剪贴板；不行就返回 false（调用方改成直接把字显示出来） */
+async function copyText(s) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(s);
+      return true;
+    }
+  } catch (e) { /* 没给权限，退回旧办法 */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = s;
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch (e) {
+    return false;
+  }
 }
 
 async function doClearDone() {

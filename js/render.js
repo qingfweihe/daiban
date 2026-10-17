@@ -79,12 +79,39 @@ export function taskWithSubsHTML(it) {
 }
 
 /** 一个分组（逾期 / 今天 / 稍后 …） */
+/* 长列表折叠：每组默认只画 60 条。
+   任务攒到几百条时，一次全画出来会让"打勾"卡半秒（实测 1000 条 195ms）。
+   只画前 60 条，剩下的点一下再画。 */
+export const PAGE_LIMIT = 60;
+export const foldState = new Set();
+
+/** 按折叠状态截断；返回要画的列表和总数 */
+export function foldList(key, items) {
+  if (foldState.has(key) || items.length <= PAGE_LIMIT) return items;
+  return items.slice(0, PAGE_LIMIT);
+}
+
+/** "还有 N 条"按钮 */
+export function foldMoreHTML(key, total, shown) {
+  const rest = total - shown;
+  if (rest <= 0) return "";
+  return (
+    '<button class="fold-more" data-act="fold-open" data-fold="' + esc(key) + '">' +
+    "还有 " + rest + " 条 · 点开" +
+    "</button>"
+  );
+}
+
 export function groupHTML(title, items, opt = {}) {
   if (!items.length) return "";
+  const key = opt.key || title;
+  const shown = foldList(key, items);
   const head =
     '<div class="group-head ' + (opt.cls || "") + '"><span>' + esc(title) + "</span>" +
     '<span class="cnt">' + items.length + "</span><span class=\"line\"></span></div>";
-  const body = items.map((it) => (opt.plain ? taskHTML(it, opt) : taskWithSubsHTML(it))).join("");
+  const body =
+    shown.map((it) => (opt.plain ? taskHTML(it, opt) : taskWithSubsHTML(it))).join("") +
+    foldMoreHTML(key, items.length, shown.length);
   return '<div class="group">' + head + body + "</div>";
 }
 

@@ -54,10 +54,10 @@ export function todayHTML() {
     );
   }
 
-  html += groupHTML("已逾期", over, { cls: "overdue" });
-  html += groupHTML("今天", todoToday);
-  html += groupHTML("接下来 7 天", soon);
-  html += groupHTML("还没定日期", noDate);
+  html += groupHTML("已逾期", over, { cls: "overdue", key: "today|over" });
+  html += groupHTML("今天", todoToday, { key: "today|today" });
+  html += groupHTML("接下来 7 天", soon, { key: "today|soon" });
+  html += groupHTML("还没定日期", noDate, { key: "today|nodate" });
   html += doneFoldHTML(doneToday);
   return html;
 }

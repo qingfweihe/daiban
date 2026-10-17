@@ -5,7 +5,7 @@
         图标等静态资源走"先用缓存、后台偷偷更新"。
    ============================================================ */
 
-const CACHE = "daiban-20261017-122424"; // 改了核心文件就升一位，否则装过的人会一直用旧缓存
+const CACHE = "daiban-20261017-225424"; // 改了核心文件就升一位，否则装过的人会一直用旧缓存
 
 const ASSETS = [
   "./",
@@ -18,6 +18,7 @@ const ASSETS = [
   "./js/ui.js",
   "./js/render.js",
   "./js/push.js",
+  "./js/cloud-backup.js",
   "./js/page-today.js",
   "./js/page-lists.js",
   "./js/page-calendar.js",
