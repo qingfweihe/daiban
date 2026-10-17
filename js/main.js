@@ -208,6 +208,13 @@ async function refineWithAI(id, raw, before) {
   if (m.priority > it.priority) patch.priority = m.priority;
   if (m.tags.length !== (it.tags || []).length) patch.tags = m.tags;
 
+  // 顺手归档：但只在他没盯着某个清单看的时候做，
+  // 否则任务会从他眼前"跳走"，比放错清单更让人迷惑。
+  const lid = ai.listType ? listIdByType(ai.listType) : null;
+  if (lid && lid !== it.listId && it.listId === (prefs().defaultListId || "l_inbox") && !listState.openId && !listState.tag) {
+    patch.listId = lid;
+  }
+
   if (!Object.keys(patch).length) return;
 
   updateItem(id, patch);
@@ -218,6 +225,10 @@ async function refineWithAI(id, raw, before) {
   if (patch.time) bits.push(patch.time);
   if (patch.repeat) bits.push("会重复");
   if (patch.title) bits.push("“" + patch.title + "”");
+  if (patch.listId) {
+    const L = lists().find((x) => x.id === patch.listId);
+    if (L) bits.push("归到" + L.name);
+  }
   toast(bits.length ? "云端看明白了 · " + bits.join(" ") : "云端补全了", 2200);
 }
 
